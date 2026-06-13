@@ -12,6 +12,26 @@ class CartItem:
     price: float
 
 
+ADD_TO_CART_SELECTORS = [
+    "#add-to-cart-button-grocery",  # Whole Foods / local market
+    "#add-to-cart-button",
+    "#add-to-cart-button-ubb",
+    "input[name='submit.add-to-cart']",
+]
+
+
+async def _click_add_to_cart(page) -> None:
+    """Click the first visible add-to-cart control on a product page."""
+    combined = ", ".join(ADD_TO_CART_SELECTORS)
+    await page.wait_for_selector(combined, timeout=15_000)
+    for selector in ADD_TO_CART_SELECTORS:
+        button = page.locator(selector)
+        if await button.count() and await button.first.is_visible():
+            await button.first.click(timeout=10_000)
+            return
+    raise RuntimeError("Add to cart button not found")
+
+
 async def build_cart(session_path: str, items: list[dict]) -> list[CartItem]:
     """
     Add each item to the Amazon Whole Foods cart.
@@ -19,7 +39,7 @@ async def build_cart(session_path: str, items: list[dict]) -> list[CartItem]:
     Returns list of CartItem for items successfully added.
     """
     from playwright.async_api import async_playwright
-    from playwright_stealth import stealth_async
+    from purchasing.stealth import apply_stealth_async
 
     cookies = load_session(session_path)
     if cookies is None:
@@ -31,9 +51,9 @@ async def build_cart(session_path: str, items: list[dict]) -> list[CartItem]:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
-        page = await context.new_page()
-        await stealth_async(page)
         await context.add_cookies(cookies)
+        page = await context.new_page()
+        await apply_stealth_async(page)
 
         for item in items:
             print(f"  Adding {item['name']}...", end=" ", flush=True)
@@ -43,7 +63,7 @@ async def build_cart(session_path: str, items: list[dict]) -> list[CartItem]:
                     wait_until="domcontentloaded",
                 )
                 await asyncio.sleep(random.uniform(1.0, 3.0))
-                await page.click("[id='add-to-cart-button']", timeout=10_000)
+                await _click_add_to_cart(page)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
                 added.append(CartItem(
                     name=item["name"],

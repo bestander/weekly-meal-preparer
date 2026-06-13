@@ -13,6 +13,11 @@ def main():
     run_p.add_argument("--recipe", default=DEFAULT_RECIPE_PATH)
     run_p.add_argument("--db", default=DEFAULT_DB_PATH)
     run_p.add_argument("--session", default=DEFAULT_SESSION_PATH)
+    run_p.add_argument(
+        "--checkout",
+        action="store_true",
+        help="Automatically proceed to checkout and place the order (default: stop at cart)",
+    )
 
     auth_p = sub.add_parser("auth", help="Authentication commands")
     auth_sub = auth_p.add_subparsers(dest="auth_command")
@@ -21,7 +26,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "run":
-        run_pipeline(args.recipe, args.db, args.session)
+        run_pipeline(args.recipe, args.db, args.session, checkout=args.checkout)
     elif args.command == "auth" and args.auth_command == "login":
         from purchasing.auth import login_interactive
         asyncio.run(login_interactive(DEFAULT_SESSION_PATH))

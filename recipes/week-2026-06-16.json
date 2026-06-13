@@ -1,0 +1,22 @@
+{
+  "week": "2026-06-16",
+  "meals": [
+    {
+      "name": "French Onion Beef Stew",
+      "servings": 4,
+      "ingredients": [
+        { "name": "Potatoes",                "quantity": 12, "unit": "oz" },
+        { "name": "Onion",                   "quantity": 2,  "unit": "pieces" },
+        { "name": "Dried Thyme",             "quantity": 1,  "unit": "tsp" },
+        { "name": "Beef for Braising",       "quantity": 16, "unit": "oz" },
+        { "name": "Beef Stock Concentrate",  "quantity": 4,  "unit": "packets" },
+        { "name": "Worcestershire Sauce",    "quantity": 2,  "unit": "tbsp" },
+        { "name": "Carrots",                 "quantity": 9,  "unit": "oz" },
+        { "name": "Flour",                   "quantity": 1,  "unit": "tbsp" },
+        { "name": "Swiss Cheese",            "quantity": 4,  "unit": "slices" },
+        { "name": "Garlic Powder",           "quantity": 1,  "unit": "tsp" },
+        { "name": "Demi-Baguette",           "quantity": 2,  "unit": "pieces" }
+      ]
+    }
+  ]
+}

@@ -36,7 +36,7 @@ async def login_interactive(session_path: str) -> None:
     as delivery store. When they close the window, cookies are saved.
     """
     from playwright.async_api import async_playwright
-    from playwright_stealth import stealth_async
+    from purchasing.stealth import apply_stealth_async
 
     print("Opening browser. Log in to Amazon, confirm Whole Foods as your delivery store,")
     print("then close the browser window.")
@@ -45,7 +45,7 @@ async def login_interactive(session_path: str) -> None:
         browser = await p.chromium.launch(headless=False)
         context = await browser.new_context()
         page = await context.new_page()
-        await stealth_async(page)
+        await apply_stealth_async(page)
         await page.goto("https://www.amazon.com/gp/flex/sign-in/select.html")
 
         # Wait until the user closes the browser

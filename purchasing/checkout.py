@@ -18,7 +18,7 @@ async def run_checkout(session_path: str, estimated_total: float) -> OrderConfir
     Aborts if final total deviates more than 20% from estimated_total.
     """
     from playwright.async_api import async_playwright
-    from playwright_stealth import stealth_async
+    from purchasing.stealth import apply_stealth_async
 
     cookies = load_session(session_path)
     if cookies is None:
@@ -30,7 +30,7 @@ async def run_checkout(session_path: str, estimated_total: float) -> OrderConfir
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
-        await stealth_async(page)
+        await apply_stealth_async(page)
         await context.add_cookies(cookies)
 
         await page.goto("https://www.amazon.com/cart", wait_until="domcontentloaded")
