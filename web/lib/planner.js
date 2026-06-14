@@ -34,7 +34,29 @@ function scoreMeal(meal, selected, planning, targetWeek) {
   return rotation - diversity + grouping;
 }
 
-export function suggestMeals(catalog, planning, targetWeek, count, excludeNames = []) {
+function pickCandidate(candidates, randomize) {
+  if (candidates.length === 0) return null;
+  if (!randomize) return candidates[0].meal;
+
+  const best = candidates[0].score;
+  const pool = candidates.filter((c) => c.score >= best - 3);
+  const weights = pool.map((c) => c.score - best + 4);
+  let roll = Math.random() * weights.reduce((sum, w) => sum + w, 0);
+  for (let i = 0; i < pool.length; i++) {
+    roll -= weights[i];
+    if (roll <= 0) return pool[i].meal;
+  }
+  return pool[pool.length - 1].meal;
+}
+
+export function suggestMeals(
+  catalog,
+  planning,
+  targetWeek,
+  count,
+  excludeNames = [],
+  { randomize = false } = {},
+) {
   const selected = [];
   const exclude = new Set(excludeNames);
   const available = catalog.filter((m) => !exclude.has(m.name));
@@ -46,17 +68,25 @@ export function suggestMeals(catalog, planning, targetWeek, count, excludeNames 
       .filter((c) => c.score > -Infinity)
       .sort((a, b) => b.score - a.score);
 
-    if (candidates.length === 0) break;
-    selected.push(candidates[0].meal);
+    const pick = pickCandidate(candidates, randomize);
+    if (!pick) break;
+    selected.push(pick);
   }
 
   return selected.map((m) => m.name);
 }
 
-export function suggestReplacement(catalog, planning, targetWeek, currentNames, replaceIndex) {
+export function suggestReplacement(
+  catalog,
+  planning,
+  targetWeek,
+  currentNames,
+  replaceIndex,
+  { randomize = true } = {},
+) {
   const exclude = [...currentNames];
   const count = 1;
-  const names = suggestMeals(catalog, planning, targetWeek, count, exclude);
+  const names = suggestMeals(catalog, planning, targetWeek, count, exclude, { randomize });
   if (names.length === 0) return currentNames;
 
   const result = [...currentNames];

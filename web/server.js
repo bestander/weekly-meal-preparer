@@ -1,11 +1,13 @@
 import express from "express";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { loadCatalog, getMealBySlug, writeCurrentWeek } from "./lib/catalog.js";
 import { loadPlanning, savePlanning, getWeek, upsertWeek, mealLastCooked, weeksSince } from "./lib/storage.js";
 import { suggestMeals, suggestReplacement } from "./lib/planner.js";
 import { getSessionStatus, runAuthLogin, runPurchase } from "./lib/amazon.js";
+import { listCropImages, imagePath, warpImage, saveWarpedImage } from "./lib/crop.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -106,7 +108,8 @@ app.post("/api/weeks/:date/suggest", (req, res) => {
   const planning = loadPlanning();
   const catalog = loadCatalog();
   const count = req.body.count || planning.settings.mealsPerWeek;
-  const names = suggestMeals(catalog, planning, req.params.date, count);
+  const randomize = Boolean(req.body.randomize);
+  const names = suggestMeals(catalog, planning, req.params.date, count, [], { randomize });
   res.json({ mealNames: names });
 });
 
@@ -204,7 +207,52 @@ app.get("/api/jobs/:id", (req, res) => {
   res.json(job);
 });
 
-app.get("*", (_req, res) => {
+app.get("/api/crop/images", (_req, res) => {
+  res.json(listCropImages());
+});
+
+app.get("/api/crop/source", (req, res) => {
+  const name = req.query.name;
+  if (!name) return res.status(400).json({ error: "name query param required" });
+  try {
+    res.sendFile(imagePath(name));
+  } catch (e) {
+    res.status(404).json({ error: e.message });
+  }
+});
+
+app.post("/api/crop/preview", (req, res) => {
+  const { name, corners } = req.body;
+  if (!name || !Array.isArray(corners) || corners.length !== 4) {
+    return res.status(400).json({ error: "name and four corners required" });
+  }
+  const tmp = path.join(os.tmpdir(), `crop-preview-${Date.now()}.jpg`);
+  try {
+    warpImage(imagePath(name), tmp, corners);
+    res.sendFile(tmp, () => fs.unlink(tmp, () => {}));
+  } catch (e) {
+    if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/crop/save", (req, res) => {
+  const { name, corners } = req.body;
+  if (!name || !Array.isArray(corners) || corners.length !== 4) {
+    return res.status(400).json({ error: "name and four corners required" });
+  }
+  try {
+    saveWarpedImage(name, corners);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({ error: "API route not found" });
+  }
   res.sendFile(path.join(PUBLIC, "index.html"));
 });
 

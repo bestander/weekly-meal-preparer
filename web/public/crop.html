@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crop Recipe Images — Meal Rotation</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Instrument+Serif&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="app crop-app">
+    <nav class="nav">
+      <a class="brand" href="/">Meal Rotation</a>
+      <div class="nav-links">
+        <a class="nav-link" href="/">← Back to app</a>
+      </div>
+    </nav>
+
+    <header class="view-header">
+      <div>
+        <h1>Crop recipe images</h1>
+        <p class="subtitle">Click four corners of the card: top-left → top-right → bottom-right → bottom-left. Drag to adjust.</p>
+      </div>
+    </header>
+
+    <div class="crop-layout">
+      <aside class="crop-list">
+        <h2>Images</h2>
+        <ul id="image-list"></ul>
+      </aside>
+
+      <section class="crop-workspace">
+        <div class="crop-toolbar">
+          <span id="image-label" class="crop-filename"></span>
+          <div class="crop-toolbar-actions">
+            <button type="button" class="btn" id="btn-reset">Reset corners</button>
+            <button type="button" class="btn" id="btn-preview">Preview</button>
+            <button type="button" class="btn btn-primary" id="btn-save">Save cropped</button>
+          </div>
+        </div>
+
+        <p id="step-hint" class="crop-hint"></p>
+        <div id="editor" class="crop-editor">
+          <img id="source-img" alt="Recipe card" crossorigin="anonymous" />
+          <svg id="overlay" class="crop-overlay"></svg>
+        </div>
+
+        <div class="crop-preview-wrap">
+          <h2>Preview</h2>
+          <img id="preview-img" class="crop-preview" alt="Cropped preview" />
+        </div>
+      </section>
+    </div>
+  </div>
+  <script type="module" src="/crop.js"></script>
+</body>
+</html>

@@ -28,6 +28,7 @@ function Nav({ route, setRoute }) {
     ["purchase", "Purchase"],
     ["settings", "Settings"],
   ];
+  const cropHref = "/crop.html";
   return html`
     <nav class="nav">
       <a class="brand" href="#" onClick=${(e) => { e.preventDefault(); setRoute("plan"); }}>
@@ -40,6 +41,7 @@ function Nav({ route, setRoute }) {
             onClick=${() => setRoute(id)}
           >${label}</button>
         `)}
+        <a class="nav-link" href=${cropHref}>Crop images</a>
       </div>
     </nav>
   `;
@@ -136,7 +138,10 @@ function PlanView({ setRoute }) {
   });
 
   async function suggestAll() {
-    const res = await api(`/api/weeks/${weekDate}/suggest`, { method: "POST" });
+    const res = await api(`/api/weeks/${weekDate}/suggest`, {
+      method: "POST",
+      body: { randomize: true },
+    });
     setMealNames(res.mealNames);
   }
 
