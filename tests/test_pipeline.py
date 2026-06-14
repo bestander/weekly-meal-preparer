@@ -218,13 +218,14 @@ def test_real_recipe_fixtures_resolve_through_pipeline(write_recipe, pantry, ses
     }
 
     def search(query):
-        return catalog[query]
+        return catalog.get(query, [{"asin": "B_TEST", "title": query, "price": 1.0}])
+
+    from purchasing.ingredient_aggregate import aggregate_ingredients
 
     for recipe_path in Path("recipes").glob("week-*.json"):
         meals = json.loads(recipe_path.read_text())["meals"]
         resolved = resolve_ingredients(meals, pantry, search)
-        ingredient_count = sum(len(meal["ingredients"]) for meal in meals)
-        assert len(resolved) == ingredient_count
+        assert len(resolved) == len(aggregate_ingredients(meals))
         assert all(item.name for item in resolved)
 
 

@@ -1,11 +1,22 @@
-"""Behavioral tests for cart-building against Amazon DOM changes."""
+"""Tests for cart deduplication."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from purchasing.cart_builder import ADD_TO_CART_SELECTORS, _click_add_to_cart
+from purchasing.cart_builder import ADD_TO_CART_SELECTORS, _click_add_to_cart, dedupe_by_asin
+
+
+def test_dedupe_by_asin_keeps_first_occurrence():
+    items = [
+        {"asin": "B001", "name": "Zucchini", "product_title": "Z", "price": 1.0},
+        {"asin": "B002", "name": "Onion", "product_title": "O", "price": 2.0},
+        {"asin": "B001", "name": "Zucchini again", "product_title": "Z", "price": 1.0},
+    ]
+    deduped = dedupe_by_asin(items)
+    assert len(deduped) == 2
+    assert deduped[0]["name"] == "Zucchini"
+    assert {i["asin"] for i in deduped} == {"B001", "B002"}
 
 
 class FakeLocator:

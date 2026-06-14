@@ -25,7 +25,6 @@ function Nav({ route, setRoute }) {
   const links = [
     ["plan", "Plan"],
     ["history", "History"],
-    ["purchase", "Purchase"],
     ["settings", "Settings"],
   ];
   const cropHref = "/crop.html";
@@ -79,12 +78,266 @@ function MealCard({ meal, onView, onSwap, showSwap }) {
   `;
 }
 
+function formatPrice(price) {
+  if (price == null) return "—";
+  return `$${Number(price).toFixed(2)}`;
+}
+
+function formatIngredientNeed(item) {
+  const qty = `${item.quantity} ${item.unit}`;
+  if (item.orderOnce) return `${qty} needed · order 1 package`;
+  return qty;
+}
+
+function formatIngredientMeals(item) {
+  if (item.meals?.length > 1) return `${item.meals.length} meals`;
+  return item.meal || item.meals?.[0] || "";
+}
+
+function OrderFlowPanel({ job, onApprove, onCancel, onRetry }) {
+  const [skippedAuto, setSkippedAuto] = useState(new Set());
+  const [reviewPicks, setReviewPicks] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [retrying, setRetrying] = useState(null);
+
+  const autoItems = job.autoItems || [];
+  const reviewItems = job.reviewItems || [];
+  const progress = job.progress || {};
+  const prevPhase = useRef(null);
+
+  useEffect(() => {
+    if (job.phase === "approval" && prevPhase.current !== "approval") {
+      setSkippedAuto(new Set());
+      setReviewPicks({});
+    }
+    prevPhase.current = job.phase;
+  }, [job.phase]);
+
+  function toggleSkipAuto(autoIndex) {
+    setSkippedAuto((prev) => {
+      const next = new Set(prev);
+      if (next.has(autoIndex)) next.delete(autoIndex);
+      else next.add(autoIndex);
+      return next;
+    });
+  }
+
+  function setReviewPick(resolvedIndex, pickIndex) {
+    setReviewPicks((prev) => ({ ...prev, [String(resolvedIndex)]: pickIndex }));
+  }
+
+  async function handleApprove() {
+    setSubmitting(true);
+    try {
+      await onApprove({
+        skippedAuto: [...skippedAuto],
+        reviewPicks,
+        action: "confirm",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const keptAuto = autoItems.filter((_, i) => !skippedAuto.has(i));
+  const confirmedReview = reviewItems
+    .filter((item) => reviewPicks[String(item.index)] >= 0)
+    .map((item) => {
+      const pickIdx = reviewPicks[String(item.index)];
+      const candidate = item.candidates[pickIdx];
+      return { price: candidate?.price };
+    });
+  const estimatedTotal = [
+    ...keptAuto.map((i) => i.price || 0),
+    ...confirmedReview.map((i) => i.price || 0),
+  ].reduce((a, b) => a + b, 0);
+
+  const allReviewPicked = reviewItems.every(
+    (item) => reviewPicks[String(item.index)] !== undefined,
+  );
+
+  if (job.phase === "resolving") {
+    const pct = progress.total
+      ? Math.round((progress.current / progress.total) * 100)
+      : 0;
+    return html`
+      <article class="panel order-flow">
+        <h2>Resolving ingredients</h2>
+        <div class="order-progress-bar">
+          <div class="order-progress-fill" style=${{ width: `${pct}%` }}></div>
+        </div>
+        <p class="order-progress-text">
+          ${progress.phase === "searching" && progress.ingredient
+            ? `Searching “${progress.ingredient}” for ${progress.meal} (${progress.current}/${progress.total})`
+            : `Resolved ${progress.current || 0} of ${progress.total || "…"} ingredients`}
+        </p>
+      </article>
+    `;
+  }
+
+  if (job.phase === "approval") {
+    return html`
+      <article class="panel order-flow">
+        <header class="order-flow-header">
+          <h2>Review your order</h2>
+          ${job.meals?.length && html`
+            <p class="subtitle">${job.meals.join(", ")}</p>
+          `}
+        </header>
+
+        ${autoItems.length > 0 && html`
+          <section class="order-section">
+            <h3>Auto-matched items</h3>
+            <p class="hint">Uncheck items you already have at home.</p>
+            <ul class="order-item-list">
+              ${autoItems.map((item, autoIndex) => html`
+                <li class="order-item" key=${item.index}>
+                  <label class="order-item-label">
+                    <input
+                      type="checkbox"
+                      checked=${!skippedAuto.has(autoIndex)}
+                      onChange=${() => toggleSkipAuto(autoIndex)}
+                    />
+                    <span class="order-item-main">
+                      <strong>${item.name}</strong>
+                      <span class="meta">${formatIngredientNeed(item)} · ${formatIngredientMeals(item)}</span>
+                    </span>
+                    <span class="order-item-product">${item.productTitle || "No match"}</span>
+                    <span class="order-item-price">${formatPrice(item.price)}</span>
+                  </label>
+                </li>
+              `)}
+            </ul>
+          </section>
+        `}
+
+        ${reviewItems.length > 0 && html`
+          <section class="order-section">
+            <h3>Items needing your selection</h3>
+            ${reviewItems.map((item) => html`
+              <div class="order-review-item" key=${item.index}>
+                <div class="order-review-header">
+                  <strong>${item.name}</strong>
+                  <span class="meta">${formatIngredientNeed(item)} · ${formatIngredientMeals(item)}</span>
+                </div>
+                ${item.candidates?.length ? html`
+                  <ul class="order-candidates">
+                    ${item.candidates.map((c, ci) => html`
+                      <li key=${ci}>
+                        <label class="order-candidate">
+                          <input
+                            type="radio"
+                            name=${`review-${item.index}`}
+                            checked=${reviewPicks[String(item.index)] === ci}
+                            onChange=${() => setReviewPick(item.index, ci)}
+                          />
+                          <span class="order-candidate-title">${c.title}</span>
+                          <span class="order-item-price">${formatPrice(c.price)}</span>
+                        </label>
+                      </li>
+                    `)}
+                  </ul>
+                ` : html`
+                  <p class="hint">No products found on Amazon Whole Foods.</p>
+                  <button
+                    class="btn btn-ghost"
+                    disabled=${retrying === item.index}
+                    onClick=${async () => {
+                      setRetrying(item.index);
+                      try { await onRetry(item.index); } finally { setRetrying(null); }
+                    }}
+                  >${retrying === item.index ? "Searching…" : "Search again"}</button>
+                `}
+                <button
+                  class="btn btn-ghost order-skip-btn"
+                  onClick=${() => setReviewPick(item.index, -1)}
+                >Skip this item</button>
+              </div>
+            `)}
+          </section>
+        `}
+
+        <section class="order-summary">
+          <p class="order-total">Estimated total: ${formatPrice(estimatedTotal)}</p>
+          <div class="order-actions">
+            <button
+              class="btn btn-primary"
+              disabled=${!allReviewPicked || submitting}
+              onClick=${handleApprove}
+            >
+              ${submitting ? "Adding to cart…" : "Confirm & add to cart"}
+            </button>
+            <button class="btn btn-ghost" disabled=${submitting} onClick=${onCancel}>Cancel</button>
+          </div>
+        </section>
+      </article>
+    `;
+  }
+
+  if (job.phase === "cart") {
+    const p = job.progress || {};
+    const pct = p.total ? Math.round(((p.current || 0) / p.total) * 100) : 0;
+    return html`
+      <article class="panel order-flow">
+        <h2>Adding to cart</h2>
+        <div class="order-progress-bar">
+          <div class="order-progress-fill" style=${{ width: `${pct}%` }}></div>
+        </div>
+        <p class="order-progress-text">
+          ${p.name
+            ? p.status === "added"
+              ? `Added “${p.name}” (${p.current || 0}/${p.total || "…"})`
+              : p.status === "failed"
+                ? `Failed on “${p.name}” (${p.current || 0}/${p.total || "…"})`
+                : `Adding “${p.name}” (${p.current || 0}/${p.total || "…"})`
+            : (job.message || "Starting cart…")}
+        </p>
+        <div class="order-cart-stats">
+          <span><strong>${p.itemsAdded ?? 0}</strong> items in cart</span>
+          <span>Running total: <strong>${formatPrice(p.cartTotal)}</strong></span>
+        </div>
+      </article>
+    `;
+  }
+
+  if (job.phase === "done" && !job.cancelled) {
+    const cart = job.result?.cart;
+    return html`
+      <article class="panel order-flow order-flow-done">
+        <h2>Order complete</h2>
+        ${cart && html`
+          <p>Added ${cart.itemsAdded} of ${cart.itemsRequested} items to your cart.</p>
+          ${cart.cartTotal != null && html`
+            <p class="order-total">Cart total: ${formatPrice(cart.cartTotal)}</p>
+          `}
+          <a class="btn btn-primary" href=${cart.cartUrl || "https://www.amazon.com/cart"} target="_blank" rel="noopener">
+            Open Amazon cart
+          </a>
+        `}
+      </article>
+    `;
+  }
+
+  if (job.phase === "error") {
+    return html`
+      <article class="panel order-flow">
+        <div class="alert alert-error">${job.error || "Order failed"}</div>
+      </article>
+    `;
+  }
+
+  return null;
+}
+
 function PlanView({ setRoute }) {
   const [data, setData] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [weekDate, setWeekDate] = useState("");
   const [mealNames, setMealNames] = useState([]);
-  const [saving, setSaving] = useState(false);
+  const [amazonStatus, setAmazonStatus] = useState(null);
+  const [ordering, setOrdering] = useState(false);
+  const [job, setJob] = useState(null);
+  const [jobId, setJobId] = useState(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [swapIndex, setSwapIndex] = useState(null);
   const [error, setError] = useState("");
@@ -100,9 +353,14 @@ function PlanView({ setRoute }) {
   }, []);
 
   const load = useCallback(async () => {
-    const [weeks, cat] = await Promise.all([api("/api/weeks"), api("/api/catalog")]);
+    const [weeks, cat, amazon] = await Promise.all([
+      api("/api/weeks"),
+      api("/api/catalog"),
+      api("/api/amazon/status"),
+    ]);
     setData(weeks);
     setCatalog(cat);
+    setAmazonStatus(amazon);
     const target = weeks.upcoming;
     setWeekDate(target);
     await loadWeekMeals(target, weeks);
@@ -120,6 +378,22 @@ function PlanView({ setRoute }) {
     }
     loadWeekMeals(weekDate, data).catch((e) => setError(e.message));
   }, [weekDate]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    const interval = setInterval(async () => {
+      const j = await api(`/api/jobs/${jobId}`);
+      setJob(j);
+      if (j.done) {
+        clearInterval(interval);
+        setOrdering(false);
+        if (j.result?.code === 0) {
+          await load();
+        }
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [jobId, load]);
 
   const catalogByName = new Map(catalog.map((m) => [m.name, m]));
   const meals = mealNames.map((name) => {
@@ -145,27 +419,57 @@ function PlanView({ setRoute }) {
     setMealNames(res.mealNames);
   }
 
-  async function swapMeal(index) {
-    const res = await api(`/api/weeks/${weekDate}/suggest-replace`, {
-      method: "POST",
-      body: { mealNames, replaceIndex: index },
-    });
-    setMealNames(res.mealNames);
-  }
-
-  async function saveWeek() {
-    setSaving(true);
+  async function orderGroceries() {
+    setError("");
+    if (mealNames.length < data.settings.mealsPerWeek) {
+      setError(`Select ${data.settings.mealsPerWeek} meals before ordering.`);
+      return;
+    }
     try {
-      await api(`/api/weeks/${weekDate}`, {
-        method: "PUT",
-        body: { mealNames, status: "planned" },
+      setOrdering(true);
+      const res = await api("/api/purchase/run", {
+        method: "POST",
+        body: { week: weekDate, mealNames },
       });
-      await load();
+      setJobId(res.jobId);
+      setJob({ log: [], done: false });
     } catch (e) {
       setError(e.message);
-    } finally {
-      setSaving(false);
+      setOrdering(false);
     }
+  }
+
+  async function handleApprove(approval) {
+    const updated = await api(`/api/purchase/jobs/${jobId}/approve`, {
+      method: "POST",
+      body: approval,
+    });
+    setJob(updated);
+  }
+
+  async function handleCancelOrder() {
+    const updated = await api(`/api/purchase/jobs/${jobId}/approve`, {
+      method: "POST",
+      body: { action: "cancel" },
+    });
+    setJob(updated);
+    setOrdering(false);
+  }
+
+  async function handleRetrySearch(index) {
+    const result = await api(`/api/purchase/jobs/${jobId}/retry`, {
+      method: "POST",
+      body: { index },
+    });
+    setJob((prev) => ({
+      ...prev,
+      resolved: prev.resolved.map((r) =>
+        r.index === index ? { ...r, candidates: result.candidates } : r
+      ),
+      reviewItems: prev.reviewItems.map((r) =>
+        r.index === index ? { ...r, candidates: result.candidates } : r
+      ),
+    }));
   }
 
   function pickMeal(name) {
@@ -177,6 +481,9 @@ function PlanView({ setRoute }) {
   }
 
   if (!data) return html`<div class="loading">Loading…</div>`;
+
+  const canOrder = amazonStatus?.status === "valid"
+    && mealNames.length >= data.settings.mealsPerWeek;
 
   return html`
     <section class="view">
@@ -195,10 +502,27 @@ function PlanView({ setRoute }) {
 
       <div class="toolbar">
         <button class="btn" onClick=${suggestAll}>Suggest meals</button>
-        <button class="btn btn-primary" onClick=${saveWeek} disabled=${saving}>
-          ${saving ? "Saving…" : "Save week plan"}
+        <button class="btn btn-primary" onClick=${orderGroceries} disabled=${ordering || !canOrder}>
+          ${ordering ? "Ordering…" : "Order groceries"}
         </button>
       </div>
+
+      ${amazonStatus?.status !== "valid" && html`
+        <p class="hint">
+          Connect Amazon in
+          <button class="link-btn" onClick=${() => setRoute("settings")}>Settings</button>
+          to order groceries.
+        </p>
+      `}
+
+      ${job && html`
+        <${OrderFlowPanel}
+          job=${job}
+          onApprove=${handleApprove}
+          onCancel=${handleCancelOrder}
+          onRetry=${handleRetrySearch}
+        />
+      `}
 
       <div class="meal-grid">
         ${meals.map((meal, i) => html`
@@ -206,7 +530,7 @@ function PlanView({ setRoute }) {
             key=${meal.name}
             meal=${meal}
             onView=${(slug, tab) => slug && setRoute("recipe", slug, tab)}
-            onSwap=${() => swapMeal(i)}
+            onSwap=${() => { setSwapIndex(i); setPickerOpen(true); }}
             showSwap=${true}
           />
         `)}
@@ -216,19 +540,6 @@ function PlanView({ setRoute }) {
             <button class="btn" onClick=${suggestAll}>Add suggestion</button>
           </div>
         `}
-      </div>
-
-      <div class="manual-pick">
-        <h2>Manual swap</h2>
-        <p>Pick a slot, then choose any recipe from the catalog.</p>
-        <div class="slot-buttons">
-          ${mealNames.map((name, i) => html`
-            <button
-              class="btn btn-ghost"
-              onClick=${() => { setSwapIndex(i); setPickerOpen(true); }}
-            >Slot ${i + 1}: ${name.slice(0, 30)}…</button>
-          `)}
-        </div>
       </div>
 
       ${pickerOpen && html`
@@ -441,7 +752,15 @@ function HistoryView({ setRoute }) {
           <article class="history-week" key=${week.week}>
             <header>
               <h2>Week of ${week.week}</h2>
-              <${Tag} label=${week.status || "planned"} variant="default" />
+              <div class="history-week-meta">
+                <${Tag}
+                  label=${week.status === "ordered" ? "ordered" : (week.status || "planned")}
+                  variant=${week.status === "ordered" ? "ordered" : "default"}
+                />
+                ${week.orderedAt && html`
+                  <span class="meta">${new Date(week.orderedAt).toLocaleDateString()}</span>
+                `}
+              </div>
             </header>
             <ul>
               ${(week.meals || []).map((meal) => html`
@@ -462,20 +781,22 @@ function HistoryView({ setRoute }) {
   `;
 }
 
-function PurchaseView() {
-  const [status, setStatus] = useState(null);
+function SettingsView() {
+  const [settings, setSettings] = useState(null);
+  const [saved, setSaved] = useState(false);
+  const [amazonStatus, setAmazonStatus] = useState(null);
   const [job, setJob] = useState(null);
   const [jobId, setJobId] = useState(null);
-  const [error, setError] = useState("");
-  const [weeks, setWeeks] = useState(null);
+  const [authError, setAuthError] = useState("");
 
-  const refresh = useCallback(async () => {
-    const [s, w] = await Promise.all([api("/api/amazon/status"), api("/api/weeks")]);
-    setStatus(s);
-    setWeeks(w);
+  const refreshAmazon = useCallback(() => {
+    api("/api/amazon/status").then(setAmazonStatus);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    api("/api/settings").then(setSettings);
+    refreshAmazon();
+  }, [refreshAmazon]);
 
   useEffect(() => {
     if (!jobId) return;
@@ -484,89 +805,11 @@ function PurchaseView() {
       setJob(j);
       if (j.done) {
         clearInterval(interval);
-        refresh();
+        refreshAmazon();
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [jobId, refresh]);
-
-  async function startAuth() {
-    setError("");
-    const res = await api("/api/amazon/auth", { method: "POST" });
-    setJobId(res.jobId);
-    setJob({ log: [], done: false });
-  }
-
-  async function startPurchase() {
-    setError("");
-    try {
-      const res = await api("/api/purchase/run", { method: "POST", body: {} });
-      setJobId(res.jobId);
-      setJob({ log: [], done: false });
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-
-  const planned = weeks?.weeks?.find((w) => w.status === "planned") || weeks?.weeks?.[0];
-  const statusLabel = {
-    valid: "Connected",
-    expired: "Session expired",
-    missing: "Not authenticated",
-  };
-
-  return html`
-    <section class="view">
-      <h1>Purchase groceries</h1>
-      <p class="subtitle">Amazon ordering runs via the Python CLI. Specialty items may need terminal approval.</p>
-
-      <div class="purchase-grid">
-        <article class="panel">
-          <h2>Amazon session</h2>
-          ${status && html`
-            <div class=${`status-badge status-${status.status}`}>
-              ${statusLabel[status.status]}
-            </div>
-            ${status.savedAt && html`
-              <p class="meta">Saved ${status.ageDays} day(s) ago (max ${status.maxAgeDays})</p>
-            `}
-          `}
-          <button class="btn" onClick=${startAuth}>Authenticate (opens browser)</button>
-          <p class="hint">Log in to Amazon, confirm Whole Foods delivery, then close the browser.</p>
-        </article>
-
-        <article class="panel">
-          <h2>This week's order</h2>
-          ${planned ? html`
-            <p>Week of <strong>${planned.week}</strong> — ${planned.mealNames?.length || 0} meals</p>
-            <ul class="compact-list">
-              ${(planned.mealNames || []).map((n) => html`<li>${n}</li>`)}
-            </ul>
-            <button class="btn btn-primary" onClick=${startPurchase} disabled=${status?.status !== "valid"}>
-              Order groceries
-            </button>
-          ` : html`<p class="empty">Save a week plan first.</p>`}
-          ${error && html`<div class="alert alert-error">${error}</div>`}
-        </article>
-      </div>
-
-      ${job && html`
-        <article class="panel log-panel">
-          <h2>Output</h2>
-          <pre class="log-output">${(job.log || []).map((l) => l.text).join("")}${job.done ? "\n[done]" : ""}</pre>
-        </article>
-      `}
-    </section>
-  `;
-}
-
-function SettingsView() {
-  const [settings, setSettings] = useState(null);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    api("/api/settings").then(setSettings);
-  }, []);
+  }, [jobId, refreshAmazon]);
 
   async function save() {
     await api("/api/settings", { method: "PUT", body: settings });
@@ -574,7 +817,24 @@ function SettingsView() {
     setTimeout(() => setSaved(false), 2000);
   }
 
+  async function startAuth() {
+    setAuthError("");
+    try {
+      const res = await api("/api/amazon/auth", { method: "POST" });
+      setJobId(res.jobId);
+      setJob({ log: [], done: false });
+    } catch (e) {
+      setAuthError(e.message);
+    }
+  }
+
   if (!settings) return html`<div class="loading">Loading…</div>`;
+
+  const statusLabel = {
+    valid: "Connected",
+    expired: "Session expired",
+    missing: "Not authenticated",
+  };
 
   return html`
     <section class="view">
@@ -599,6 +859,25 @@ function SettingsView() {
         <button class="btn btn-primary" onClick=${save}>Save</button>
         ${saved && html`<span class="saved-msg">Saved!</span>`}
       </div>
+
+      <article class="panel settings-amazon">
+        <h2>Amazon session</h2>
+        <p class="subtitle">Required to order groceries from the Plan page.</p>
+        ${amazonStatus && html`
+          <div class=${`status-badge status-${amazonStatus.status}`}>
+            ${statusLabel[amazonStatus.status]}
+          </div>
+          ${amazonStatus.savedAt && html`
+            <p class="meta">Saved ${amazonStatus.ageDays} day(s) ago (max ${amazonStatus.maxAgeDays})</p>
+          `}
+        `}
+        <button class="btn" onClick=${startAuth}>Authenticate (opens browser)</button>
+        <p class="hint">Log in to Amazon, confirm Whole Foods delivery, then close the browser.</p>
+        ${authError && html`<div class="alert alert-error">${authError}</div>`}
+        ${job && html`
+          <pre class="log-output">${(job.log || []).map((l) => l.text).join("")}${job.done ? "\n[done]" : ""}</pre>
+        `}
+      </article>
     </section>
   `;
 }
@@ -624,7 +903,6 @@ function App() {
           <${RecipeView} slug=${recipeSlug} initialTab=${recipeTab} goBack=${() => setRoute("plan")} />
         `}
         ${route === "history" && html`<${HistoryView} setRoute=${setRoute} />`}
-        ${route === "purchase" && html`<${PurchaseView} />`}
         ${route === "settings" && html`<${SettingsView} />`}
       </main>
     </div>

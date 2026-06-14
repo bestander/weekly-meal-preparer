@@ -5,12 +5,12 @@ import sys
 from dataclasses import dataclass
 
 from purchasing.pantry_db import PantryDB
-from purchasing.ingredient_resolver import resolve_ingredients
+from purchasing.ingredient_resolver import resolve_ingredients, resolve_ingredients_async
 from purchasing.cli_approval import run_approval, CART_URL
 from purchasing.cart_builder import build_cart
 from purchasing.checkout import run_checkout, OrderConfirmation
-from purchasing.auth import is_session_valid, load_session
-from purchasing.prices import make_price_lookup, _parse_price
+from purchasing.auth import is_session_valid
+from purchasing.search_stack import run_cached_search_session
 
 DEFAULT_RECIPE_PATH = "recipes/current-week.json"
 DEFAULT_DB_PATH = "data/pantry.db"
@@ -24,54 +24,18 @@ class CartResult:
     cart_url: str = CART_URL
 
 
-def _make_amazon_search(session_path: str):
-    """Return a search function that uses the saved Amazon session."""
-
-    def _amazon_search(query: str) -> list[dict]:
-        from playwright.sync_api import sync_playwright
-        from purchasing.stealth import apply_stealth_sync
-
-        cookies = load_session(session_path)
-        if cookies is None:
-            raise RuntimeError(
-                f"No session found at {session_path}. Run: python -m purchasing auth login"
-            )
-
-        results = []
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
-            context.add_cookies(cookies)
-            page = context.new_page()
-            apply_stealth_sync(page)
-            url = f"https://www.amazon.com/s?k={query.replace(' ', '+')}&i=wholefoods"
-            page.goto(url, wait_until="domcontentloaded")
-            page.wait_for_selector("[data-component-type='s-search-result']", timeout=10_000)
-
-            for item in page.query_selector_all("[data-component-type='s-search-result']")[:3]:
-                try:
-                    asin = item.get_attribute("data-asin")
-                    title_el = item.query_selector("h2 span, .a-text-normal")
-                    price_el = item.query_selector(".a-price .a-offscreen")
-                    title = title_el.inner_text().strip() if title_el else "Unknown"
-                    price_text = price_el.inner_text() if price_el else ""
-                    price = _parse_price(price_text)
-                    if asin:
-                        results.append({"asin": asin, "title": title, "price": price})
-                except Exception:
-                    continue
-
-            browser.close()
-        return results
-
-    return _amazon_search
-
-
 def _save_confirmed_to_pantry(pantry: PantryDB, confirmed_items: list[dict]) -> None:
     for item in confirmed_items:
         existing = pantry.get(item["name"])
         if existing is None or not existing["confirmed_by_user"]:
             pantry.save(item["name"], item["asin"], item["product_title"], confirmed_by_user=True)
+
+
+async def _resolve_for_pipeline(meals, pantry, session_path):
+    async def run(search, price_fn):
+        return await resolve_ingredients_async(meals, pantry, search, price_fn)
+
+    return await run_cached_search_session(session_path, run)
 
 
 def run_pipeline(
@@ -93,11 +57,13 @@ def run_pipeline(
 
     pantry = PantryDB(db_path)
     print("Resolving ingredients...")
-    search = search_fn or _make_amazon_search(session_path)
-    price_fn = None if search_fn else make_price_lookup(session_path)
-    resolved = resolve_ingredients(meals, pantry, search, price_fn)
 
-    approval = run_approval(resolved, meals, search)
+    if search_fn is not None:
+        resolved = resolve_ingredients(meals, pantry, search_fn)
+    else:
+        resolved = asyncio.run(_resolve_for_pipeline(meals, pantry, session_path))
+
+    approval = run_approval(resolved, meals, search_fn)
     if approval is None:
         return None
 

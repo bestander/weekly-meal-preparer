@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import { loadCatalog, getMealBySlug, writeCurrentWeek } from "./lib/catalog.js";
 import { loadPlanning, savePlanning, getWeek, upsertWeek, mealLastCooked, weeksSince } from "./lib/storage.js";
 import { suggestMeals, suggestReplacement } from "./lib/planner.js";
-import { getSessionStatus, runAuthLogin, runPurchase } from "./lib/amazon.js";
+import { getSessionStatus, runAuthLogin, runResolve, runFinish, runSearchOne } from "./lib/amazon.js";
 import { listCropImages, imagePath, warpImage, saveWarpedImage } from "./lib/crop.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -149,6 +149,93 @@ app.get("/api/amazon/status", (_req, res) => {
 
 const activeJobs = new Map();
 
+function splitResolved(resolved) {
+  const autoItems = [];
+  const reviewItems = [];
+  for (const item of resolved || []) {
+    if (item.status === "auto") autoItems.push(item);
+    else if (item.status === "review") reviewItems.push(item);
+  }
+  return { autoItems, reviewItems };
+}
+
+async function runPurchaseJob(jobId, week, mealNames, checkout) {
+  const job = activeJobs.get(jobId);
+  job.phase = "resolving";
+  job.progress = { phase: "starting", current: 0, total: 0 };
+
+  try {
+    const { result } = await runResolve((event) => {
+      if (event.type === "progress") {
+        job.progress = event;
+      }
+      if (event.type === "log") {
+        job.log.push({ stream: event.stream, text: event.text, at: new Date().toISOString() });
+      }
+    });
+
+    job.meals = result.meals;
+    job.resolved = result.resolved;
+    const { autoItems, reviewItems } = splitResolved(result.resolved);
+    job.autoItems = autoItems;
+    job.reviewItems = reviewItems;
+    job.phase = "approval";
+    job.message = "Review matched items and confirm your order.";
+  } catch (err) {
+    job.phase = "error";
+    job.error = err.message;
+    job.done = true;
+  }
+}
+
+async function finishPurchaseJob(jobId, approval, checkout, week, mealNames) {
+  const job = activeJobs.get(jobId);
+  job.phase = "cart";
+  job.message = "Building cart…";
+
+  try {
+    const { code, result } = await runFinish(
+      {
+        resolved: job.resolved,
+        skippedAuto: approval.skippedAuto || [],
+        reviewPicks: approval.reviewPicks || {},
+      },
+      checkout,
+      (event) => {
+        if (event.type === "progress") {
+          job.progress = event;
+          job.message = event.message || job.message;
+        }
+        if (event.type === "log") {
+          job.log.push({ stream: event.stream, text: event.text, at: new Date().toISOString() });
+        }
+      },
+    );
+
+    job.phase = "done";
+    job.done = true;
+    job.result = { code, cart: result };
+
+    if (code === 0) {
+      const p = loadPlanning();
+      const existing = getWeek(p, week);
+      upsertWeek(p, {
+        week,
+        mealNames,
+        status: "ordered",
+        orderedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+      });
+      savePlanning(p);
+    }
+  } catch (err) {
+    job.phase = "error";
+    job.error = err.message;
+    job.done = true;
+  }
+}
+
 app.post("/api/amazon/auth", async (_req, res) => {
   const jobId = `auth-${Date.now()}`;
   const log = [];
@@ -165,40 +252,108 @@ app.post("/api/amazon/auth", async (_req, res) => {
 
 app.post("/api/purchase/run", async (req, res) => {
   const planning = loadPlanning();
-  const current = planning.weeks
-    .filter((w) => w.mealNames?.length)
-    .sort((a, b) => (b.updatedAt || b.week).localeCompare(a.updatedAt || a.week))[0];
-  if (!current?.mealNames?.length) {
-    return res.status(400).json({ error: "No planned week with meals. Save a week plan first." });
+  let week = req.body?.week;
+  let mealNames = req.body?.mealNames;
+
+  if (!week || !mealNames?.length) {
+    const current = planning.weeks
+      .filter((w) => w.mealNames?.length)
+      .sort((a, b) => (b.updatedAt || b.week).localeCompare(a.updatedAt || a.week))[0];
+    if (!current?.mealNames?.length) {
+      return res.status(400).json({ error: "No meals selected for this week." });
+    }
+    week = current.week;
+    mealNames = current.mealNames;
   }
 
-  writeCurrentWeek(current.week, current.mealNames);
+  writeCurrentWeek(week, mealNames);
 
   const jobId = `purchase-${Date.now()}`;
-  const log = [];
-  activeJobs.set(jobId, { type: "purchase", log, done: false });
+  const checkout = req.body?.checkout === true;
+  const job = {
+    type: "purchase",
+    phase: "resolving",
+    log: [],
+    done: false,
+    week,
+    mealNames,
+    checkout,
+    progress: null,
+    resolved: null,
+    autoItems: [],
+    reviewItems: [],
+    meals: [],
+    message: "Resolving ingredients…",
+  };
+  activeJobs.set(jobId, job);
 
   res.json({
     jobId,
-    week: current.week,
-    meals: current.mealNames,
-    message: "Purchase started. Specialty items may need approval in the terminal.",
+    week,
+    meals: mealNames,
+    message: "Resolving ingredients…",
   });
 
-  const checkout = req.body?.checkout === true;
-  runPurchase((stream, text) => {
-    log.push({ stream, text, at: new Date().toISOString() });
-  }, checkout).then((result) => {
-    activeJobs.set(jobId, { type: "purchase", log, done: true, result });
-    if (result.code === 0) {
-      const p = loadPlanning();
-      const w = getWeek(p, current.week);
-      if (w) {
-        upsertWeek(p, { ...w, status: "ordered", orderedAt: new Date().toISOString() });
-        savePlanning(p);
-      }
-    }
-  });
+  runPurchaseJob(jobId, week, mealNames, checkout);
+});
+
+app.post("/api/purchase/jobs/:id/approve", async (req, res) => {
+  const job = activeJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  if (job.phase !== "approval") {
+    return res.status(400).json({ error: "Job is not awaiting approval" });
+  }
+
+  if (req.body.action === "cancel") {
+    job.phase = "done";
+    job.done = true;
+    job.cancelled = true;
+    job.message = "Order cancelled.";
+    return res.json(job);
+  }
+
+  const reviewItems = job.reviewItems || [];
+  const reviewPicks = req.body.reviewPicks || {};
+  const missing = reviewItems.filter((item) => reviewPicks[String(item.index)] === undefined);
+  if (missing.length) {
+    return res.status(400).json({
+      error: `Pick or skip all review items (${missing.length} remaining).`,
+    });
+  }
+
+  res.json({ ...job, phase: "cart", message: "Building cart…" });
+  finishPurchaseJob(
+    req.params.id,
+    {
+      skippedAuto: req.body.skippedAuto || [],
+      reviewPicks,
+    },
+    job.checkout,
+    job.week,
+    job.mealNames,
+  );
+});
+
+app.post("/api/purchase/jobs/:id/retry", async (req, res) => {
+  const job = activeJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  if (job.phase !== "approval") {
+    return res.status(400).json({ error: "Can only retry search during approval" });
+  }
+
+  const { index } = req.body;
+  const item = job.resolved?.find((r) => r.index === index);
+  if (!item) return res.status(404).json({ error: "Ingredient not found" });
+
+  try {
+    const { result } = await runSearchOne(item.name);
+    item.candidates = result.candidates || [];
+    const review = job.reviewItems.find((r) => r.index === index);
+    if (review) review.candidates = item.candidates;
+    res.json({ candidates: item.candidates, item });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get("/api/jobs/:id", (req, res) => {

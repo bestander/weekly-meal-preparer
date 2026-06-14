@@ -126,6 +126,7 @@ h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
 .tag-cuisine { background: #e0e8f5; color: #2c5282; }
 .tag-new { background: var(--green-soft); color: var(--green); }
 .tag-history { background: #eee8df; color: var(--muted); }
+.tag-ordered { background: var(--green-soft); color: var(--green); }
 
 /* View */
 .view-header {
@@ -200,16 +201,6 @@ h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
   color: var(--muted);
   gap: 1rem;
 }
-
-/* Manual pick */
-.manual-pick {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-}
-
-.slot-buttons { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
 
 /* Modal */
 .modal-overlay {
@@ -403,6 +394,12 @@ h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
   margin-bottom: 0.75rem;
 }
 
+.history-week-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .history-week ul { list-style: none; }
 
 .history-week li {
@@ -418,14 +415,7 @@ h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
 .history-week li:last-child { border-bottom: none; }
 .meta { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
 
-/* Purchase */
-.purchase-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
+/* Amazon / jobs */
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -469,6 +459,156 @@ h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
   word-break: break-word;
 }
 
+.order-flow {
+  margin-bottom: 1.5rem;
+}
+
+.order-flow-header h2 {
+  margin-bottom: 0.25rem;
+}
+
+.order-progress-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 1rem 0 0.75rem;
+}
+
+.order-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.order-progress-text {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.order-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.order-section h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.35rem;
+}
+
+.order-item-list {
+  list-style: none;
+  margin-top: 0.75rem;
+}
+
+.order-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.order-item:last-child {
+  border-bottom: none;
+}
+
+.order-item-label {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.65rem 0;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+
+.order-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.order-item-product {
+  color: var(--muted);
+  font-size: 0.82rem;
+  max-width: 280px;
+}
+
+.order-item-price {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.order-review-item {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.order-review-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.75rem;
+}
+
+.order-candidates {
+  list-style: none;
+}
+
+.order-candidate {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.5rem 0;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+
+.order-candidate-title {
+  line-height: 1.35;
+}
+
+.order-skip-btn {
+  margin-top: 0.5rem;
+}
+
+.order-cart-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  font-size: 0.95rem;
+}
+
+.order-cart-stats strong {
+  color: var(--accent);
+}
+
+.order-summary {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.order-total {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.order-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.order-flow-done p {
+  margin-bottom: 1rem;
+}
+
 /* Settings */
 .settings-form {
   display: flex;
@@ -492,6 +632,19 @@ h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
 }
 
 .saved-msg { color: var(--green); font-size: 0.9rem; margin-left: 0.75rem; }
+
+.settings-amazon {
+  margin-top: 2rem;
+  max-width: 480px;
+}
+
+.settings-amazon h2 {
+  margin-bottom: 0.35rem;
+}
+
+.settings-amazon .log-output {
+  margin-top: 1rem;
+}
 
 /* Misc */
 .loading, .empty { color: var(--muted); padding: 2rem 0; }
