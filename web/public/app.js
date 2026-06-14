@@ -242,6 +242,32 @@ function PlanView({ setRoute }) {
   `;
 }
 
+function ImageLightbox({ src, alt, onClose }) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  return html`
+    <div class="image-lightbox-overlay" onClick=${onClose} role="dialog" aria-modal="true">
+      <button class="image-lightbox-close btn btn-ghost" onClick=${onClose} aria-label="Close">×</button>
+      <img
+        class="image-lightbox-img"
+        src=${src}
+        alt=${alt}
+        onClick=${(e) => e.stopPropagation()}
+      />
+    </div>
+  `;
+}
+
 function CatalogPicker({ onPick, onClose, exclude }) {
   const [catalog, setCatalog] = useState([]);
   const [filter, setFilter] = useState("");
@@ -292,6 +318,7 @@ function CatalogPicker({ onPick, onClose, exclude }) {
 function RecipeView({ slug, goBack, initialTab = "instructions" }) {
   const [recipe, setRecipe] = useState(null);
   const [tab, setTab] = useState(initialTab);
+  const [lightbox, setLightbox] = useState(null);
 
   useEffect(() => {
     setTab(initialTab);
@@ -331,7 +358,15 @@ function RecipeView({ slug, goBack, initialTab = "instructions" }) {
       ${tab === "instructions" && html`
         <div class="recipe-content">
           ${recipe.images?.instructions && html`
-            <img class="recipe-image" src="/api/images/${recipe.slug}/instructions" alt="Instructions card" />
+            <img
+              class="recipe-image recipe-image-clickable"
+              src="/api/images/${recipe.slug}/instructions"
+              alt="Instructions card"
+              onClick=${() => setLightbox({
+                src: `/api/images/${recipe.slug}/instructions`,
+                alt: "Instructions card",
+              })}
+            />
           `}
           <ol class="steps">
             ${(recipe.instructions || []).map((step) => html`
@@ -347,7 +382,15 @@ function RecipeView({ slug, goBack, initialTab = "instructions" }) {
       ${tab === "ingredients" && html`
         <div class="recipe-content">
           ${recipe.images?.ingredients && html`
-            <img class="recipe-image" src="/api/images/${recipe.slug}/ingredients" alt="Ingredients card" />
+            <img
+              class="recipe-image recipe-image-clickable"
+              src="/api/images/${recipe.slug}/ingredients"
+              alt="Ingredients card"
+              onClick=${() => setLightbox({
+                src: `/api/images/${recipe.slug}/ingredients`,
+                alt: "Ingredients card",
+              })}
+            />
           `}
           <ul class="ingredient-list">
             ${(recipe.ingredients || []).map((ing) => html`
@@ -366,6 +409,14 @@ function RecipeView({ slug, goBack, initialTab = "instructions" }) {
             </div>
           `)}
         </div>
+      `}
+
+      ${lightbox && html`
+        <${ImageLightbox}
+          src=${lightbox.src}
+          alt=${lightbox.alt}
+          onClose=${() => setLightbox(null)}
+        />
       `}
     </section>
   `;

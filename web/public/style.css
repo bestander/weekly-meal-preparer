@@ -306,6 +306,41 @@ h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
   border: 1px solid var(--border);
 }
 
+.recipe-image-clickable {
+  cursor: zoom-in;
+}
+
+.recipe-image-clickable:hover {
+  opacity: 0.92;
+}
+
+.image-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 200;
+}
+
+.image-lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.image-lightbox-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  color: #fff;
+  font-size: 1.75rem;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+}
+
 .steps { list-style: none; counter-reset: step; }
 
 .step {
