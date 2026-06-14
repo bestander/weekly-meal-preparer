@@ -553,6 +553,17 @@ h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
   margin-bottom: 0.75rem;
 }
 
+.order-item-unavailable {
+  opacity: 0.85;
+}
+
+.order-item-unavailable .order-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0;
+}
+
 .order-candidates {
   list-style: none;
 }

@@ -102,6 +102,7 @@ function OrderFlowPanel({ job, onApprove, onCancel, onRetry }) {
 
   const autoItems = job.autoItems || [];
   const reviewItems = job.reviewItems || [];
+  const unavailableItems = job.unavailableItems || [];
   const progress = job.progress || {};
   const prevPhase = useRef(null);
 
@@ -205,6 +206,23 @@ function OrderFlowPanel({ job, onApprove, onCancel, onRetry }) {
                     <span class="order-item-product">${item.productTitle || "No match"}</span>
                     <span class="order-item-price">${formatPrice(item.price)}</span>
                   </label>
+                </li>
+              `)}
+            </ul>
+          </section>
+        `}
+
+        ${unavailableItems.length > 0 && html`
+          <section class="order-section">
+            <h3>Not available at Whole Foods</h3>
+            <p class="hint">These items won't be added to your cart.</p>
+            <ul class="order-item-list">
+              ${unavailableItems.map((item) => html`
+                <li class="order-item order-item-unavailable" key=${item.index}>
+                  <span class="order-item-main">
+                    <strong>${item.name}</strong>
+                    <span class="meta">${formatIngredientNeed(item)} · ${formatIngredientMeals(item)}</span>
+                  </span>
                 </li>
               `)}
             </ul>

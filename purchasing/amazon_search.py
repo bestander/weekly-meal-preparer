@@ -6,8 +6,18 @@ from purchasing.auth import load_session
 from purchasing.prices import _parse_price
 from purchasing.stealth import apply_stealth_async
 
+from purchasing.wholefoods import (
+    WHOLE_FOODS_SEARCH_INDEX,
+    WF_ADD_TO_CART_SELECTOR,
+    is_whole_foods_search_result,
+)
+
 SEARCH_SELECTOR = "[data-component-type='s-search-result']"
-PRICE_SELECTOR = "#buybox .a-price .a-offscreen, .a-price .a-offscreen"
+PRICE_SELECTOR = (
+    "#addToCart_feature_div .a-price .a-offscreen, "
+    "#alm-natc-div .a-price .a-offscreen, "
+    ".a-price .a-offscreen"
+)
 
 
 class AsyncAmazonSearchSession:
@@ -40,7 +50,7 @@ class AsyncAmazonSearchSession:
 
     async def search(self, query: str) -> list[dict]:
         await self.start()
-        url = f"https://www.amazon.com/s?k={query.replace(' ', '+')}&i=wholefoods"
+        url = f"https://www.amazon.com/s?k={query.replace(' ', '+')}&i={WHOLE_FOODS_SEARCH_INDEX}"
         await self._page.goto(url, wait_until="domcontentloaded")
         await self._page.wait_for_selector(SEARCH_SELECTOR, timeout=10_000)
 
@@ -48,6 +58,8 @@ class AsyncAmazonSearchSession:
         for item in await self._page.query_selector_all(SEARCH_SELECTOR):
             if len(results) >= 3:
                 break
+            if not await is_whole_foods_search_result(item):
+                continue
             try:
                 asin = await item.get_attribute("data-asin")
                 title_el = await item.query_selector("h2 span, .a-text-normal")
@@ -60,6 +72,15 @@ class AsyncAmazonSearchSession:
             except Exception:
                 continue
         return results
+
+    async def is_available_at_whole_foods(self, asin: str) -> bool:
+        await self.start()
+        await self._page.goto(
+            f"https://www.amazon.com/dp/{asin}",
+            wait_until="domcontentloaded",
+        )
+        button = self._page.locator(WF_ADD_TO_CART_SELECTOR)
+        return await button.count() > 0 and await button.first.is_visible()
 
     async def lookup_price(self, asin: str) -> float | None:
         await self.start()

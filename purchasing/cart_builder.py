@@ -3,6 +3,7 @@ import random
 from dataclasses import dataclass
 
 from purchasing.auth import load_session
+from purchasing.wholefoods import WF_ADD_TO_CART_SELECTOR, WHOLE_FOODS_NOT_FOUND
 
 
 @dataclass
@@ -12,13 +13,6 @@ class CartItem:
     product_title: str
     price: float
 
-
-ADD_TO_CART_SELECTORS = [
-    "#add-to-cart-button-grocery",  # Whole Foods / local market
-    "#add-to-cart-button",
-    "#add-to-cart-button-ubb",
-    "input[name='submit.add-to-cart']",
-]
 
 NAV_TIMEOUT_MS = 60_000
 
@@ -35,16 +29,14 @@ def dedupe_by_asin(items: list[dict]) -> list[dict]:
     return list(seen.values())
 
 
-async def _click_add_to_cart(page) -> None:
-    """Click the first visible add-to-cart control on a product page."""
-    combined = ", ".join(ADD_TO_CART_SELECTORS)
-    await page.wait_for_selector(combined, timeout=15_000)
-    for selector in ADD_TO_CART_SELECTORS:
-        button = page.locator(selector)
-        if await button.count() and await button.first.is_visible():
-            await button.first.click(timeout=10_000)
-            return
-    raise RuntimeError("Add to cart button not found")
+async def _click_add_to_cart_whole_foods(page) -> None:
+    """Click only the Whole Foods grocery add-to-cart button."""
+    button = page.locator(WF_ADD_TO_CART_SELECTOR)
+    try:
+        await button.wait_for(state="visible", timeout=15_000)
+    except Exception as exc:
+        raise RuntimeError(WHOLE_FOODS_NOT_FOUND) from exc
+    await button.click(timeout=10_000)
 
 
 async def _add_one_via_product_page(page, item: dict) -> None:
@@ -54,7 +46,7 @@ async def _add_one_via_product_page(page, item: dict) -> None:
         timeout=NAV_TIMEOUT_MS,
     )
     await asyncio.sleep(random.uniform(0.75, 1.5))
-    await _click_add_to_cart(page)
+    await _click_add_to_cart_whole_foods(page)
     await asyncio.sleep(random.uniform(0.4, 0.8))
 
 
@@ -82,6 +74,8 @@ async def build_cart(
 ) -> list[CartItem]:
     """
     Add each item to the Amazon Whole Foods cart one at a time.
+
+    Skips items that are not available for Whole Foods delivery.
 
     items: list of {name, asin, product_title, price, quantity, unit}
     on_progress(event: dict) — optional callback during cart building

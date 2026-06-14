@@ -22,7 +22,7 @@ class ResolvedIngredient:
     name: str
     quantity: float
     unit: str
-    status: str                    # "auto" | "review"
+    status: str                    # "auto" | "review" | "unavailable"
     meals: list[str] = field(default_factory=list)
     order_once: bool = False
     asin: str | None = None
@@ -63,6 +63,15 @@ def _resolve_one(ing: dict, pantry, search_fn, price_fn=None) -> "ResolvedIngred
     candidates = search_fn(name)[:3]
 
     if status == "auto":
+        if not candidates:
+            return ResolvedIngredient(
+                name=name,
+                quantity=ing["quantity"],
+                unit=ing["unit"],
+                status="unavailable",
+                meals=list(ing.get("meals") or []),
+                order_once=bool(ing.get("order_once")),
+            )
         top = candidates[0] if candidates else None
         return ResolvedIngredient(
             name=name,
@@ -74,6 +83,16 @@ def _resolve_one(ing: dict, pantry, search_fn, price_fn=None) -> "ResolvedIngred
             asin=top["asin"] if top else None,
             product_title=top["title"] if top else None,
             price=top["price"] if top else None,
+        )
+
+    if not candidates:
+        return ResolvedIngredient(
+            name=name,
+            quantity=ing["quantity"],
+            unit=ing["unit"],
+            status="unavailable",
+            meals=list(ing.get("meals") or []),
+            order_once=bool(ing.get("order_once")),
         )
 
     return ResolvedIngredient(
@@ -200,6 +219,15 @@ async def _resolve_one_async(ing: dict, pantry, search_fn, price_fn=None) -> "Re
     candidates = (await search_fn(name))[:3]
 
     if status == "auto":
+        if not candidates:
+            return ResolvedIngredient(
+                name=name,
+                quantity=ing["quantity"],
+                unit=ing["unit"],
+                status="unavailable",
+                meals=list(ing.get("meals") or []),
+                order_once=bool(ing.get("order_once")),
+            )
         top = candidates[0] if candidates else None
         return ResolvedIngredient(
             name=name,
@@ -211,6 +239,16 @@ async def _resolve_one_async(ing: dict, pantry, search_fn, price_fn=None) -> "Re
             asin=top["asin"] if top else None,
             product_title=top["title"] if top else None,
             price=top["price"] if top else None,
+        )
+
+    if not candidates:
+        return ResolvedIngredient(
+            name=name,
+            quantity=ing["quantity"],
+            unit=ing["unit"],
+            status="unavailable",
+            meals=list(ing.get("meals") or []),
+            order_once=bool(ing.get("order_once")),
         )
 
     return ResolvedIngredient(

@@ -1,10 +1,12 @@
-"""Tests for cart deduplication."""
+"""Tests for cart deduplication and Whole Foods–only add to cart."""
 
 import asyncio
 
 import pytest
 
-from purchasing.cart_builder import ADD_TO_CART_SELECTORS, _click_add_to_cart, dedupe_by_asin
+from purchasing.cart_builder import dedupe_by_asin
+from purchasing.wholefoods import WF_ADD_TO_CART_SELECTOR, WHOLE_FOODS_NOT_FOUND
+from purchasing import cart_builder as cb
 
 
 def test_dedupe_by_asin_keeps_first_occurrence():
@@ -34,6 +36,10 @@ class FakeLocator:
     async def is_visible(self):
         return self.selector in self.page.visible_selectors
 
+    async def wait_for(self, state="visible", timeout=15_000):
+        if self.selector not in self.page.visible_selectors:
+            raise TimeoutError(f"{self.selector} not visible")
+
     async def click(self, timeout=10_000):
         if self.selector not in self.page.visible_selectors:
             raise TimeoutError(f"{self.selector} not clickable")
@@ -45,26 +51,18 @@ class FakePage:
         self.visible_selectors = visible_selectors
         self.clicked = []
 
-    async def wait_for_selector(self, combined, timeout=15_000):
-        if not any(sel in self.visible_selectors for sel in ADD_TO_CART_SELECTORS):
-            raise TimeoutError("no add-to-cart selector appeared")
-
     def locator(self, selector):
         return FakeLocator(self, selector)
 
 
-@pytest.mark.parametrize("visible,expected", [
-    (["#add-to-cart-button-grocery"], "#add-to-cart-button-grocery"),
-    (["#add-to-cart-button"], "#add-to-cart-button"),
-    (["#add-to-cart-button-grocery", "#add-to-cart-button"], "#add-to-cart-button-grocery"),
-])
-def test_whole_foods_selector_takes_priority(visible, expected):
-    page = FakePage(visible)
-    asyncio.run(_click_add_to_cart(page))
-    assert page.clicked == [expected]
+def test_whole_foods_grocery_button_is_used():
+    page = FakePage([WF_ADD_TO_CART_SELECTOR])
+    asyncio.run(cb._click_add_to_cart_whole_foods(page))
+    assert page.clicked == [WF_ADD_TO_CART_SELECTOR]
 
 
-def test_missing_add_to_cart_raises_clear_error():
-    page = FakePage([])
-    with pytest.raises(TimeoutError):
-        asyncio.run(_click_add_to_cart(page))
+def test_regular_amazon_button_is_not_used():
+    page = FakePage(["#add-to-cart-button"])
+    with pytest.raises(RuntimeError, match=WHOLE_FOODS_NOT_FOUND):
+        asyncio.run(cb._click_add_to_cart_whole_foods(page))
+    assert page.clicked == []

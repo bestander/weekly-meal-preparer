@@ -152,11 +152,13 @@ const activeJobs = new Map();
 function splitResolved(resolved) {
   const autoItems = [];
   const reviewItems = [];
+  const unavailableItems = [];
   for (const item of resolved || []) {
     if (item.status === "auto") autoItems.push(item);
     else if (item.status === "review") reviewItems.push(item);
+    else if (item.status === "unavailable") unavailableItems.push(item);
   }
-  return { autoItems, reviewItems };
+  return { autoItems, reviewItems, unavailableItems };
 }
 
 async function runPurchaseJob(jobId, week, mealNames, checkout) {
@@ -176,9 +178,10 @@ async function runPurchaseJob(jobId, week, mealNames, checkout) {
 
     job.meals = result.meals;
     job.resolved = result.resolved;
-    const { autoItems, reviewItems } = splitResolved(result.resolved);
+    const { autoItems, reviewItems, unavailableItems } = splitResolved(result.resolved);
     job.autoItems = autoItems;
     job.reviewItems = reviewItems;
+    job.unavailableItems = unavailableItems;
     job.phase = "approval";
     job.message = "Review matched items and confirm your order.";
   } catch (err) {
@@ -282,6 +285,7 @@ app.post("/api/purchase/run", async (req, res) => {
     resolved: null,
     autoItems: [],
     reviewItems: [],
+    unavailableItems: [],
     meals: [],
     message: "Resolving ingredients…",
   };
